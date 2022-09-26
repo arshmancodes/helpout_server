@@ -1,94 +1,60 @@
-const express = require('express');
-const bcrypt = require('bcrypt'); 
-const AuthSchema = require('../models/authModel');
-const { json } = require('body-parser');
+const db = require('../utils/database');
+const { genSaltSync, hashSync, compareSync } = require('bcrypt');
+const bcrypt = require('bcrypt');
 
 
-exports.getAll = (req, res, next) => {
-    res.send("Hello welcome to auth Endpoint");
+
+exports.postAuth = (req, res, next) => {
+
+    // console.log(req.body.first_name);
+    // res.send(req.body.first_name);
+
+    var first_name = req.body.first_name;
+    var last_name = req.body.last_name;
+    var email_address = req.body.email_address;
+    var password = req.body.password;
+    var gender = req.body.gender;
+    var age = req.body.age;
+    var fcmToken = req.body.fcmToken;
+
+    const salt = genSaltSync(10);
+    password = hashSync(req.body.password, salt);
+
+    db.execute('INSERT INTO users(first_name, last_name, email_address, password, gender, age, fcmToken) VALUES (?, ?, ?, ?, ?, ?, ?)', [first_name, last_name, email_address, password, gender, age, fcmToken]).then(([rows, fieldData]) => {
+        res.status(200).json({
+            data : rows,
+            moreData : fieldData
+        })
+    })
+
 }
 
-exports.registerUser =  async(req, res, next) => {
+exports.getAuth = (req, res, next) => {
 
-     
-    const saltRounds = 10;
-    const salt = bcrypt.genSaltSync(saltRounds);
-    req.body.password = bcrypt.hashSync(req.body.password, salt);
-
-    let emailExists = await AuthSchema.findOne({
-        email: req.body.email
-    });
-    if(emailExists === null)
-    {
-       let phoneExists = await AuthSchema.findOne({
-        mobileNumber: req.body.mobileNumber
-       });
-       if(phoneExists === null)
-       {
-        const authBody = new AuthSchema(req.body);
-        authBody.save().then((result) => {
-            res.status(200).json({
-                message: "Account Registered Successfully",
-                userId : result._id,
-                success : true
-            });
-        }).catch(err => {
-            res.status(500).json({
-                error: err,
-                success: false
-            });
-        })
-       }
-       else
-       {
-        res.status(400).json({
-            error: "An account is already linked with this Number",
-            success : false,
-        })
-       }
-    }
-    else
-    {
-       res.status(400).json({
-        error: "Email Already Exists",
-        success: false
-       })
-    }
-   
+    db.execute('SELECT * from users').then(([rows, fieldData]) => {
+        res.status(200).json(rows)
+    })
 }
 
-exports.login = async(req, res, next) => {
+exports.login = (req, res, next) => {
 
-    const {email, password, fcmToken} = req.body;
+    var email_address = req.body.email_address;
+    var password = req.body.password;
 
-    let auth = await AuthSchema.findOne({email: email});
 
-    if(auth!== null)
-    {
-        const validPassword = bcrypt.compareSync(password, auth.password);
-        if(validPassword) 
+    db.execute('SELECT * FROM users WHERE email_address=?', [req.body.email_address]).then(([rows, fieldData]) => {
+        if(rows.length > 0) 
         {
-            auth.updateOne({fcmToken: fcmToken},).then((result) => {
-                auth.fcmToken = fcmToken;
-                res.status(200).json(auth);
-            }).catch(err => {
-                res.status(200).json(auth);
-                console.log(err);
-            })
+            const validPassword = compareSync(req.body.password, rows[0].password);
+            if(validPassword)
+            {
+                res.status(200).json({
+                    message : 'User logged in Successfully',
+                    success: true,
+                    data: rows[0],
+                    
+                })
+            }
         }
-        else
-        {
-            res.status(400).json({
-                error: "Invalid Password",
-                success: false,
-            });
-        }
-    }
-    else
-    {
-        res.status(400).json({
-            error: "Invalid Email or Password",
-            success: false,
-        })
-    }
+    })
 }
